@@ -1,617 +1,395 @@
-<!DOCTYPE html>
-<html lang="zh-HK">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>春雨婚禮全日作戰手冊：後勤與財物指南</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome for Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', 'Noto Sans TC', sans-serif;
-            background-color: #f8fafc; /* bg-slate-50 */
-        }
-        .custom-scrollbar::-webkit-scrollbar {
-            height: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 2px;
-        }
-        /* Active task pulse effect */
-        .task-active {
-            border-color: #e11d48 !important; /* rose-600 */
-            background-color: #fff1f2 !important; /* rose-50 */
-            box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.2);
-            transition: all 0.3s ease;
-        }
-    </style>
-</head>
-<body class="text-slate-800 min-h-screen pb-12">
+import React, { useState, useEffect, useMemo } from 'react';
+import { CheckCircle2, Circle, Coffee, Moon, Sun, ChevronLeft, ChevronRight, Plus, X, Sunrise, Sun as SunIcon, Moon as MoonIcon } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 
-    <!-- Header Section -->
-    <header class="bg-white/90 backdrop-blur-md sticky top-0 z-50 shadow-sm border-b border-slate-200">
-        <div class="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="bg-rose-100 p-2 rounded-xl text-rose-600 border border-rose-200">
-                    <i class="fa-solid fa-person-running text-lg"></i>
-                </div>
-                <div>
-                    <!-- Click title 3 times to open debug time simulator -->
-                    <h1 id="app-title" class="font-bold text-lg leading-tight text-slate-800 active:opacity-50 select-none">「春雨」作戰清單</h1>
-                    <p class="text-[10px] text-slate-500 font-medium">Manessa & Adrian (24 May 2026)</p>
-                </div>
-            </div>
-            <div class="text-right flex flex-col items-end">
-                <span class="bg-rose-50 text-rose-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-rose-100">
-                    後勤與財物
-                </span>
-            </div>
+// --- Firebase Initialization Pattern ---
+let app, auth, db, appId;
+try {
+  const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+} catch (e) {
+  console.error("Firebase init error:", e);
+}
+
+// --- Constants ---
+const HOLIDAYS_2026 = [
+  '2026-01-01', '2026-02-17', '2026-02-18', '2026-02-19', '2026-04-03', '2026-04-04', '2026-04-06', '2026-04-07', 
+  '2026-05-01', '2026-05-24', '2026-06-19', '2026-07-01', '2026-09-26', '2026-10-01', '2026-10-26', '2026-12-25', '2026-12-26'
+];
+
+// --- Components ---
+
+const TaskItem = ({ task, isCompleted, onToggle }) => {
+  const timeIcon = 
+    task.time === 1 ? <Sunrise className="w-4 h-4 text-orange-400 mr-2" /> :
+    task.time === 3 ? <MoonIcon className="w-4 h-4 text-indigo-400 mr-2" /> :
+    <SunIcon className="w-4 h-4 text-yellow-500 mr-2" />;
+
+  return (
+    <div 
+      onClick={() => onToggle(task.id)}
+      className={`flex items-start p-4 mb-3 rounded-xl border transition-all cursor-pointer shadow-sm active:scale-[0.98]
+        ${isCompleted ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 hover:border-blue-300'}`}
+    >
+      <div className="mt-1 mr-4 flex-shrink-0">
+        {isCompleted ? <CheckCircle2 className="w-6 h-6 text-green-500" /> : <Circle className="w-6 h-6 text-gray-300" />}
+      </div>
+      <div className="flex-1">
+        <h3 className={`font-semibold text-lg flex items-center ${isCompleted ? 'text-green-800 line-through opacity-70' : 'text-gray-800'}`}>
+          {!isCompleted && timeIcon}
+          {task.en}
+        </h3>
+        <p className={`text-sm mt-1 ${isCompleted ? 'text-green-600 opacity-70' : 'text-gray-500'}`}>
+          {task.tag}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const AddTaskModal = ({ isOpen, onClose, onAdd, currentDate }) => {
+  const [taskEn, setTaskEn] = useState('');
+  const [taskTag, setTaskTag] = useState('');
+  const [frequency, setFrequency] = useState('once');
+  const [time, setTime] = useState(2); // Default to Anytime
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!taskEn.trim()) return;
+    
+    onAdd({
+      en: taskEn,
+      tag: taskTag || 'No translation provided',
+      frequency,
+      time: parseInt(time),
+      targetDate: frequency === 'once' ? currentDate.toLocaleDateString('en-CA') : null,
+      dayOfWeek: frequency === 'weekly' ? currentDate.getDay() : null
+    });
+    
+    setTaskEn('');
+    setTaskTag('');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-end sm:items-center">
+      <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl animate-in slide-in-from-bottom-10">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-800">Add Custom Task</h2>
+          <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20}/></button>
         </div>
-    </header>
-
-    <main class="max-w-md mx-auto px-4 mt-4 space-y-5">
-
-        <!-- Real-time Time Dashboard -->
-        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 relative overflow-hidden">
-            <!-- Background pattern -->
-            <div class="absolute -right-4 -top-4 opacity-5 text-rose-900 text-9xl pointer-events-none">
-                <i class="fa-solid fa-clock"></i>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Task Name (English)</label>
+            <input type="text" required value={taskEn} onChange={e => setTaskEn(e.target.value)} className="w-full border rounded-lg p-2 bg-gray-50 focus:bg-white outline-blue-500" placeholder="e.g. Clean the aircon filter" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Description (Tagalog / Note)</label>
+            <input type="text" value={taskTag} onChange={e => setTaskTag(e.target.value)} className="w-full border rounded-lg p-2 bg-gray-50 focus:bg-white outline-blue-500" placeholder="Optional notes" />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">When to do?</label>
+              <select value={time} onChange={e => setTime(e.target.value)} className="w-full border rounded-lg p-2 bg-gray-50">
+                <option value={1}>Morning</option>
+                <option value={2}>Anytime</option>
+                <option value={3}>Night</option>
+              </select>
             </div>
-            
-            <div class="relative z-10">
-                <div class="flex justify-between items-end mb-3">
-                    <div>
-                        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">當前香港時間 (HKT)</p>
-                        <div id="live-clock" class="text-3xl font-black text-slate-800 tracking-tight tabular-nums">--:--:--</div>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">全日作戰進度</p>
-                        <div id="progress-percentage" class="text-lg font-bold text-rose-600">0%</div>
-                    </div>
-                </div>
-
-                <!-- Live Progress Bar (09:00 to 23:30) -->
-                <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden mb-4 relative shadow-inner">
-                    <div id="time-progress-bar" class="bg-gradient-to-r from-rose-500 to-pink-500 h-full w-0 transition-all duration-1000 ease-linear"></div>
-                </div>
-                
-                <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <span class="relative flex h-3 w-3">
-                            <span id="active-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75 hidden"></span>
-                            <span id="active-dot" class="relative inline-flex rounded-full h-3 w-3 bg-slate-300"></span>
-                        </span>
-                        <span class="text-xs font-semibold text-slate-600">當前任務狀態</span>
-                    </div>
-                    <span id="current-task-status" class="text-xs font-bold text-slate-400">等待大日子降臨...</span>
-                </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Frequency</label>
+              <select value={frequency} onChange={e => setFrequency(e.target.value)} className="w-full border rounded-lg p-2 bg-gray-50">
+                <option value="once">Today Only</option>
+                <option value="weekly">Every Week (on this day)</option>
+              </select>
             </div>
-        </div>
+          </div>
+          
+          <button type="submit" className="w-full bg-[#4b86b4] text-white font-bold py-3 rounded-xl hover:bg-[#2a4d69] transition mt-2">
+            Save Task
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
 
-        <!-- Filter Tabs -->
-        <div class="flex gap-2 overflow-x-auto pb-1 custom-scrollbar snap-x">
-            <button onclick="filterPhase('all')" id="tab-all" class="tab-btn active shrink-0 px-4 py-2 text-xs font-bold rounded-full bg-rose-600 text-white transition-all snap-start shadow-sm">
-                全日流程
-            </button>
-            <button onclick="filterPhase('phase1')" id="tab-phase1" class="tab-btn shrink-0 px-4 py-2 text-xs font-semibold rounded-full bg-white text-slate-600 border border-slate-200 transition-all snap-start shadow-sm hover:bg-slate-50">
-                1. 酒店及拜神
-            </button>
-            <button onclick="filterPhase('phase2')" id="tab-phase2" class="tab-btn shrink-0 px-4 py-2 text-xs font-semibold rounded-full bg-white text-slate-600 border border-slate-200 transition-all snap-start shadow-sm hover:bg-slate-50">
-                2. M+佈置
-            </button>
-            <button onclick="filterPhase('phase3')" id="tab-phase3" class="tab-btn shrink-0 px-4 py-2 text-xs font-semibold rounded-full bg-white text-slate-600 border border-slate-200 transition-all snap-start shadow-sm hover:bg-slate-50">
-                3. 晚宴撤退
-            </button>
-        </div>
+// --- Main App ---
 
-        <!-- Timeline Container -->
-        <div class="relative pl-5 space-y-5 border-l-2 border-rose-100 ml-2 mt-4">
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // Data from Firestore
+  const [completedTaskIds, setCompletedTaskIds] = useState([]);
+  const [dbCustomTasks, setDbCustomTasks] = useState([]);
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-            <!-- ================= PHASE 1 ================= -->
-            <div class="timeline-group" data-phase="phase1">
-                <div class="absolute -left-[11px] bg-rose-100 text-rose-800 text-[10px] font-black px-1.5 py-0.5 rounded border border-rose-200 shadow-sm transform -translate-y-1">
-                    09:00
-                </div>
-                
-                <!-- Task 1: 09:00 - 10:55 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="09:00" data-end="10:55">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-1" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800 flex items-center gap-1.5">
-                                    <i class="fa-solid fa-suitcase-rolling text-rose-500"></i>
-                                    搬運行李上車
-                                </span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">09:00</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">協助將新人個人行李、衣物安全送上花車。</p>
-                        </div>
-                    </div>
-                </div>
+  // 1. Auth Setup (Crucial Rule 3)
+  useEffect(() => {
+    if (!auth) return;
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth failed:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
 
-                <!-- Task 2: 10:55 - 11:15 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="10:55" data-end="11:15">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-2" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">酒店出門房清場</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">10:55 - 11:15</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">與 Willson 合作清場。注意：只清自攜佈置，酒店物品切勿移動。</p>
-                        </div>
-                    </div>
-                </div>
+  // 2. Fetch Data (Rules 1 & 2)
+  useEffect(() => {
+    if (!user || !db) return;
+    const dateStr = currentDate.toLocaleDateString('en-CA');
+    
+    // Listen to today's completed tasks document
+    const completedRef = doc(db, 'artifacts', appId, 'public', 'data', 'completed_tasks', dateStr);
+    const unsubCompleted = onSnapshot(completedRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setCompletedTaskIds(docSnap.data().taskIds || []);
+      } else {
+        setCompletedTaskIds([]);
+      }
+    }, (err) => console.error(err));
 
-                <!-- Task 3: 11:15 - 12:00 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="11:15" data-end="12:00">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-3" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">搬運房內物資出發</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">11:15 - 11:30</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">清場後迅速將物資搬運上車，出發前往順風圍。</p>
-                        </div>
-                    </div>
-                </div>
+    // Listen to ALL custom tasks (Filter in memory later)
+    const customTasksRef = collection(db, 'artifacts', appId, 'public', 'data', 'custom_tasks');
+    const unsubCustom = onSnapshot(customTasksRef, (snapshot) => {
+      const cTasks = [];
+      snapshot.forEach(doc => cTasks.push({ id: doc.id, ...doc.data() }));
+      setDbCustomTasks(cTasks);
+    }, (err) => console.error(err));
 
-                <!-- Task 4: 12:00 - 13:00 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="12:00" data-end="13:00">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-4" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">「醫肚團隊」午餐安排</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">12:00</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">統籌並分配工作人員與兄弟姊妹的午餐事宜。</p>
-                        </div>
-                    </div>
-                </div>
+    return () => {
+      unsubCompleted();
+      unsubCustom();
+    };
+  }, [user, currentDate]);
 
-                <!-- Task 5: 13:00 - 14:10 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="13:00" data-end="14:10">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-5" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">Zone A (嫲嫲屋) 清理 & 休息</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">13:00</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">拜神完結後清理臨時雜物，隨後爭取時間休息充電。</p>
-                        </div>
-                    </div>
-                </div>
+  // Helper functions
+  const formatDateStr = (date) => date.toLocaleDateString('en-CA');
+  const shiftDate = (days) => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(newDate.getDate() + days);
+    setCurrentDate(newDate);
+  };
 
-                <!-- Task 6: 14:10 - 15:00 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="14:10" data-end="15:00">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-6" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">搬運物資至接駁車</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">14:10</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">聯同 Wing 及 Willson 將物資搬往 27座，準備轉往 M+。</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+  const handleToggleTask = async (taskId) => {
+    if (!user || !db) return;
+    const dateStr = formatDateStr(currentDate);
+    const newIds = completedTaskIds.includes(taskId)
+      ? completedTaskIds.filter(id => id !== taskId)
+      : [...completedTaskIds, taskId];
+    
+    // Optimistic UI update could be done here, but Firestore is fast enough.
+    const completedRef = doc(db, 'artifacts', appId, 'public', 'data', 'completed_tasks', dateStr);
+    await setDoc(completedRef, { taskIds: newIds }, { merge: true });
+  };
 
-            <!-- ================= PHASE 2 ================= -->
-            <div class="timeline-group mt-8" data-phase="phase2">
-                <div class="absolute -left-[11px] bg-rose-100 text-rose-800 text-[10px] font-black px-1.5 py-0.5 rounded border border-rose-200 shadow-sm transform -translate-y-1">
-                    15:00
-                </div>
-                
-                <!-- Task 7: 15:00 - 16:00 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="15:00" data-end="16:00">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-7" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">M+ 物資進場 & 回禮交收</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">15:00</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">全員搬運道具至「璞」。將回禮交給 Joel 派發，確保特定裝飾已移走。</p>
-                        </div>
-                    </div>
-                </div>
+  const handleAddCustomTask = async (taskData) => {
+    if (!user || !db) return;
+    const customTasksRef = collection(db, 'artifacts', appId, 'public', 'data', 'custom_tasks');
+    await addDoc(customTasksRef, {
+      ...taskData,
+      createdAt: serverTimestamp(),
+      createdBy: user.uid
+    });
+  };
 
-                <!-- Task 8: 16:00 - 17:00 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="16:00" data-end="17:00">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-8" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">迎賓區 Set-up 佈置</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">16:00 - 17:00</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">在「丁」統籌下，與 Wing 負責迎賓、簽到處及相關裝飾佈置。</p>
-                        </div>
-                    </div>
-                </div>
+  // Task generation & Merging Logic
+  const { tasks, status, statusSubtitle } = useMemo(() => {
+    const day = currentDate.getDay();
+    const dateStr = formatDateStr(currentDate);
+    
+    if (day === 0) return { tasks: [], status: 'sunday', statusSubtitle: 'Today is Sunday. Have a good rest!' };
+    if (HOLIDAYS_2026.includes(dateStr)) return { tasks: [], status: 'holiday', statusSubtitle: 'Today is a Public Holiday. Enjoy your day off!' };
 
-                <!-- Task 9: 17:00 - 17:30 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="17:00" data-end="17:30">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-9" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">Reception Standby 迎賓</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">17:00</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">進入接待處工作崗位，準備迎接賓客。</p>
-                        </div>
-                    </div>
-                </div>
+    // --- Core Tasks (Hardcoded rules) ---
+    // time: 1=Morning, 2=Anytime, 3=Night
+    let dailyTasks = [];
 
-                <!-- Task 10: 17:30 - 18:15 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="17:30" data-end="18:15">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-10" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">儀式期間 Recep 支援</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">17:30 - 18:15</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">證婚期間堅守接待處，為遲到賓客簽到、領位及保管人情。</p>
-                        </div>
-                    </div>
-                </div>
+    // Morning
+    dailyTasks.push({ id: 't1', en: 'Floor Dusting & Vacuuming', tag: 'Mag-vacuum o mag-alis ng alikabok sa sahig bago mag-map.', time: 1 });
+    if ([1, 3, 5].includes(day)) {
+      dailyTasks.push({ id: 't2', en: 'Mopping the Floor', tag: 'Mag-mop ng sahig (pagkatapos mag-vacuum).', time: 1 });
+    }
+    if ([2, 4, 6].includes(day)) {
+      dailyTasks.push({ id: 't6', en: 'Do the Laundry', tag: 'Maglaba sa umaga (ihiwalay ang puti sa may kulay).', time: 1 });
+    }
 
-                <!-- Task 11: 18:15 - 18:45 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative overflow-hidden" data-start="18:15" data-end="18:45">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-11" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">搬移花環拱門</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">18:15 - 18:30</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">證婚禮成後，與 Wing 將花環拱門移往迎賓位，確保新人名牌掛好。</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    // Night (Renamed for clarity)
+    dailyTasks.push({ id: 't3', en: 'Clean Kitchen Stove & Sink', tag: 'Punasan ang kalan, cooker hood, at linisin ang filter ng lababo.', time: 3 });
+    dailyTasks.push({ id: 't4', en: 'Clear Bathroom Drain Hair', tag: 'Alisin ang buhok sa drainage ng banyo gabi-gabi.', time: 3 });
+    dailyTasks.push({ id: 't5', en: 'Check and Take out Trash', tag: 'Suriin ang basurahan at itapon ang basura bago matulog.', time: 3 });
 
-            <!-- ================= PHASE 3 ================= -->
-            <div class="timeline-group mt-8" data-phase="phase3">
-                <div class="absolute -left-[11px] bg-rose-100 text-rose-800 text-[10px] font-black px-1.5 py-0.5 rounded border border-rose-200 shadow-sm transform -translate-y-1">
-                    18:45
-                </div>
-                
-                <!-- Task 12: 18:45 - 19:15 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="18:45" data-end="19:15">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-12" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">晚宴迎賓 Reception</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">18:45 - 19:30</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">在接待處當值，負責引導晚宴期間到場的賓客。</p>
-                        </div>
-                    </div>
-                </div>
+    // Anytime Tasks
+    if (day === 5) {
+      dailyTasks.push({ id: 't7', en: 'Drain Disinfection', tag: 'Magbuhos ng Dettol sa mga drainage sa kusina at banyo.', time: 2 });
+    }
 
-                <!-- Task 13: 19:15 - 19:30 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="19:15" data-end="19:30">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-13" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">注意 & 協助女家簽到</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">19:15</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">若女家接待處人手緊張，隨時支援簽到及指引座位。</p>
-                        </div>
-                    </div>
-                </div>
+    // Bi-weekly cycle logic
+    if (day === 6) {
+      const firstDayOfYear = new Date(currentDate.getFullYear(), 0, 1);
+      const pastDaysOfYear = (currentDate - firstDayOfYear) / 86400000;
+      const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+      
+      if (weekNum % 2 !== 0) {
+        dailyTasks.push({ id: 't8', en: 'Change Bed Sheets & Pillow Covers', tag: 'Palitan at labhan ang lahat ng bed sheet at punda.', time: 2 });
+        dailyTasks.push({ id: 't9', en: 'Wipe Indoor Windows', tag: 'Punasan ang mga salamin ng bintana sa loob.', time: 2 });
+      } else {
+        dailyTasks.push({ id: 't10', en: 'Cooker Hood Deep Cleaning', tag: 'Linisin nang mabuti ang oil cups at filters ng cooker hood.', time: 2 });
+      }
+    }
 
-                <!-- Task 14: 19:30 - 20:30 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="19:30" data-end="20:30">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-14" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">Recep 關站 & 鎖入新娘房</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">19:30 - 20:30</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">接待至首道菜上桌後，與細佬將迎賓物資搬回新娘房鎖好。</p>
-                        </div>
-                    </div>
-                </div>
+    // Deep Cleaning Rotation
+    const rotationMap = {
+      1: { en: 'Deep Clean: Living Room', tag: 'Punasan ang TV cabinet, sofa, alikabok sa matataas na lugar' },
+      2: { en: 'Deep Clean: Kitchen', tag: 'Loob ng microwave/ref, tiles sa dingding' },
+      3: { en: 'Deep Clean: Toilet & Bathroom', tag: 'Kuskusin ang toilet bowl, salamin, shower glass' },
+      4: { en: 'Deep Clean: Master Bedroom', tag: 'Punasan ang aparador at gilid ng kama' },
+      5: { en: 'Deep Clean: Helper Bedroom', tag: 'Ayusin ang sariling kwarto' },
+    };
+    if (rotationMap[day]) {
+      dailyTasks.push({ id: `t11_${day}`, ...rotationMap[day], time: 2 });
+    }
 
-                <!-- Task 15: 20:30 - 22:40 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="20:30" data-end="22:40">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-15" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">入席「收工」與敬酒 Standby</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">20:30 - 21:30</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">入席食飯，於 21:30 敬酒環節前 Standby 配合走位。</p>
-                        </div>
-                    </div>
-                </div>
+    // --- Merge Custom Tasks ---
+    const activeCustomTasks = dbCustomTasks.filter(ct => {
+      if (ct.frequency === 'once') return ct.targetDate === dateStr;
+      if (ct.frequency === 'weekly') return ct.dayOfWeek === day;
+      return false;
+    });
 
-                <!-- Task 16: 22:40 - 22:45 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="22:40" data-end="22:45">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-16" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">送客分流引導</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">22:40 - 23:05</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">維持門口秩序，指引賓客離開及乘搭接駁巴士。</p>
-                        </div>
-                    </div>
-                </div>
+    const allTasks = [...dailyTasks, ...activeCustomTasks];
 
-                <!-- Task 17: 22:45 - 23:15 -->
-                <div class="task-card mt-3 bg-rose-50 rounded-xl p-3.5 shadow-sm border border-rose-200 transition-all relative overflow-hidden" data-start="22:45" data-end="23:15">
-                    <div class="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-17" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-rose-900 flex items-center gap-1.5">
-                                    <i class="fa-solid fa-vault text-rose-500"></i>
-                                    關鍵：監管鏈 A 金器移交
-                                </span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">22:45</span>
-                            </div>
-                            <p class="text-xs text-rose-700 mt-1 font-medium">與細佬、丁共同收集並保管劉媽媽的人情袋與所有金器，親手移交至劉媽媽手上。</p>
-                        </div>
-                    </div>
-                </div>
+    // --- Sort by Time (1=Morning, 2=Anytime, 3=Night) ---
+    allTasks.sort((a, b) => a.time - b.time);
 
-                <!-- Task 18: 23:15 - 23:30 -->
-                <div class="task-card mt-3 bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 transition-all relative" data-start="23:15" data-end="23:30">
-                    <div class="absolute -left-6 top-4 w-4 h-0.5 bg-rose-100"></div>
-                    <div class="flex items-start gap-3">
-                        <input type="checkbox" id="c-task-18" class="local-cb mt-1 w-4 h-4 rounded text-rose-600 border-slate-300">
-                        <div class="flex-1">
-                            <div class="flex justify-between items-start">
-                                <span class="font-bold text-sm text-slate-800">終極撤退：物資上花車</span>
-                                <span class="time-badge text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">23:15</span>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-1">協助清點現場剩餘自攜物資並搬運上花車。收工！</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    return { tasks: allTasks, status: 'working', statusSubtitle: '' };
+  }, [currentDate, dbCustomTasks]);
 
-        </div>
-    </main>
+  const progress = tasks.length === 0 ? 0 : Math.round((completedTaskIds.length / tasks.length) * 100);
 
-    <!-- UI Interaction and Real-time Time Logic -->
-    <script>
-        const WEDDING_DATE_STRING = "2026-05-24";
-        // Chun Yu starts at 09:00
-        const START_TIME = new Date(`${WEDDING_DATE_STRING}T09:00:00+08:00`).getTime();
-        const END_TIME = new Date(`${WEDDING_DATE_STRING}T23:30:00+08:00`).getTime();
+  return (
+    <div className="min-h-screen bg-gray-50 flex justify-center font-sans selection:bg-blue-200">
+      <div className="w-full max-w-md bg-white shadow-xl min-h-screen flex flex-col relative overflow-hidden">
         
-        let debugTimeOffset = 0;
-        let isDebugMode = false;
-        
-        // Formatter for HKT display
-        const timeFormatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'Asia/Hong_Kong',
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-
-        const dateFormatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'Asia/Hong_Kong',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-
-        // Initialize checkboxes with localStorage (offline persistence)
-        // Using "chun_task_" to avoid clash with brother's data
-        function initLocalCheckboxes() {
-            document.querySelectorAll('.local-cb').forEach(cb => {
-                const isChecked = localStorage.getItem(`chun_task_${cb.id}`) === 'true';
-                cb.checked = isChecked;
-                updateTaskVisuals(cb);
-
-                cb.addEventListener('change', (e) => {
-                    localStorage.setItem(`chun_task_${e.target.id}`, e.target.checked);
-                    updateTaskVisuals(e.target);
-                });
-            });
-        }
-
-        function updateTaskVisuals(checkbox) {
-            const card = checkbox.closest('.task-card');
-            if (checkbox.checked) {
-                card.classList.add('opacity-40');
-            } else {
-                card.classList.remove('opacity-40');
-            }
-        }
-
-        // Parse time attribute to timestamp
-        function parseTaskTime(timeString) {
-            return new Date(`${WEDDING_DATE_STRING}T${timeString}:00+08:00`).getTime();
-        }
-
-        // Real-time Engine
-        function tick() {
-            const realNow = new Date().getTime();
-            const now = realNow + debugTimeOffset;
+        {/* Header */}
+        <header className="bg-[#2a4d69] text-white pt-6 pb-6 px-6 rounded-b-3xl shadow-md z-10 relative">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-xl font-bold tracking-wide flex items-center gap-2">
+              <Sun className="w-6 h-6 text-yellow-300" />
+              Daily Tasks
+            </h1>
             
-            // 1. Update Live Digital Clock
-            const hkTimeString = timeFormatter.format(new Date(now));
-            const hkDateString = dateFormatter.format(new Date(now));
-            
-            const isWeddingDay = hkDateString === "05/24/2026";
-            
-            if (isDebugMode) {
-                document.getElementById('live-clock').innerHTML = `<span class="text-rose-500">${hkTimeString}</span>`;
-            } else {
-                document.getElementById('live-clock').innerText = hkTimeString;
-            }
+            {/* Nav Controls */}
+            <div className="flex bg-[#4b86b4] rounded-full p-1 shadow-inner">
+              <button onClick={() => shiftDate(-1)} className="p-1 rounded-full hover:bg-[#2a4d69] transition">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button onClick={() => setCurrentDate(new Date())} className="p-1 px-3 text-sm font-semibold hover:bg-[#2a4d69] transition">
+                Today
+              </button>
+              <button onClick={() => shiftDate(1)} className="p-1 rounded-full hover:bg-[#2a4d69] transition">
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex items-end justify-between">
+            <div>
+              <p className="text-[#adcbe3] text-sm uppercase font-semibold tracking-wider">
+                {currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
+              </p>
+              <p className="text-3xl font-light">
+                {currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+            </div>
+            {status === 'working' && (
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="bg-white/20 hover:bg-white/30 p-2 rounded-xl backdrop-blur-sm transition flex items-center gap-1 text-sm font-semibold"
+              >
+                <Plus size={18} /> Add
+              </button>
+            )}
+          </div>
+        </header>
 
-            // 2. Update Progress Bar
-            let percentage = 0;
-            if (now >= END_TIME) {
-                percentage = 100;
-            } else if (now > START_TIME && now < END_TIME) {
-                percentage = ((now - START_TIME) / (END_TIME - START_TIME)) * 100;
-            }
-            
-            document.getElementById('progress-percentage').innerText = `${Math.floor(percentage)}%`;
-            document.getElementById('time-progress-bar').style.width = `${percentage}%`;
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-y-auto px-6 py-6 pb-24">
+          {!user ? (
+            <div className="flex justify-center items-center h-40">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2a4d69]"></div>
+            </div>
+          ) : status !== 'working' ? (
+             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6">
+               <div className="w-24 h-24 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-6">
+                 {status === 'holiday' || status === 'sunday' ? <Coffee size={48} /> : <Moon size={48} />}
+               </div>
+               <h2 className="text-2xl font-bold text-gray-800 mb-2">{status === 'holiday' ? 'Public Holiday' : 'Rest Day'}</h2>
+               <p className="text-gray-500">{statusSubtitle}</p>
+             </div>
+          ) : (
+            <>
+              {/* Progress */}
+              <div className="mb-6">
+                <div className="flex justify-between text-sm font-semibold text-gray-600 mb-2">
+                  <span>Task Progress</span>
+                  <span className="text-blue-600">{progress}%</span>
+                </div>
+                <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
 
-            // 3. Highlight Current Task
-            let activeTaskFound = false;
-            let currentTaskName = "";
-            const taskCards = document.querySelectorAll('.task-card');
-            
-            taskCards.forEach(card => {
-                const start = parseTaskTime(card.dataset.start);
-                const end = parseTaskTime(card.dataset.end);
-                const timeBadge = card.querySelector('.time-badge');
+              {/* Task List */}
+              <div className="space-y-1">
+                {tasks.map(task => (
+                  <TaskItem 
+                    key={task.id} 
+                    task={task} 
+                    isCompleted={completedTaskIds.includes(task.id)} 
+                    onToggle={handleToggleTask} 
+                  />
+                ))}
+              </div>
+              
+              {progress === 100 && tasks.length > 0 && (
+                <div className="mt-6 p-4 bg-green-100 text-green-800 rounded-xl text-center font-semibold border border-green-200">
+                  🎉 All tasks completed! Great job today!
+                </div>
+              )}
+            </>
+          )}
+        </main>
 
-                // Reset styles
-                card.classList.remove('task-active');
-                timeBadge.classList.remove('bg-rose-500', 'text-white');
-                timeBadge.classList.add('bg-slate-100', 'text-slate-600');
-
-                if (isWeddingDay || isDebugMode) {
-                    if (now >= start && now < end) {
-                        // Task is active!
-                        card.classList.add('task-active');
-                        timeBadge.classList.remove('bg-slate-100', 'text-slate-600');
-                        timeBadge.classList.add('bg-rose-500', 'text-white');
-                        activeTaskFound = true;
-                        currentTaskName = card.querySelector('.font-bold').innerText;
-                    }
-                }
-            });
-
-            // 4. Update Status UI
-            const activeDot = document.getElementById('active-dot');
-            const activePing = document.getElementById('active-ping');
-            const statusText = document.getElementById('current-task-status');
-
-            if (!isWeddingDay && !isDebugMode) {
-                activeDot.className = "relative inline-flex rounded-full h-3 w-3 bg-slate-300";
-                activePing.classList.add('hidden');
-                statusText.innerText = "等待大日子降臨...";
-                statusText.className = "text-xs font-bold text-slate-400";
-            } else if (now < START_TIME) {
-                activeDot.className = "relative inline-flex rounded-full h-3 w-3 bg-amber-400";
-                activePing.classList.add('hidden');
-                statusText.innerText = "準備出發";
-                statusText.className = "text-xs font-bold text-amber-600";
-            } else if (now >= END_TIME) {
-                activeDot.className = "relative inline-flex rounded-full h-3 w-3 bg-emerald-500";
-                activePing.classList.add('hidden');
-                statusText.innerText = "作戰圓滿結束！辛苦晒！";
-                statusText.className = "text-xs font-bold text-emerald-600";
-            } else if (activeTaskFound) {
-                activeDot.className = "relative inline-flex rounded-full h-3 w-3 bg-rose-500";
-                activePing.classList.remove('hidden');
-                statusText.innerText = currentTaskName;
-                statusText.className = "text-xs font-bold text-rose-600 truncate max-w-[150px] text-right";
-            } else {
-                // In between tasks or unmapped buffer times
-                activeDot.className = "relative inline-flex rounded-full h-3 w-3 bg-pink-400";
-                activePing.classList.add('hidden');
-                statusText.innerText = "緩衝 / 待命中";
-                statusText.className = "text-xs font-bold text-pink-600";
-            }
-        }
-
-        // Tab Filtering logic
-        window.filterPhase = function(phaseId) {
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('bg-rose-600', 'text-white', 'active');
-                btn.classList.add('bg-white', 'text-slate-600');
-            });
-            const activeTab = document.getElementById(`tab-${phaseId}`);
-            activeTab.classList.remove('bg-white', 'text-slate-600');
-            activeTab.classList.add('bg-rose-600', 'text-white', 'active');
-
-            document.querySelectorAll('.timeline-group').forEach(group => {
-                if (phaseId === 'all' || group.getAttribute('data-phase') === phaseId) {
-                    group.style.display = 'block';
-                } else {
-                    group.style.display = 'none';
-                }
-            });
-        };
-
-        // Hidden Debug Tool (Click title 3 times)
-        let clickCount = 0;
-        let clickTimer;
-        document.getElementById('app-title').addEventListener('click', () => {
-            clickCount++;
-            clearTimeout(clickTimer);
-            clickTimer = setTimeout(() => { clickCount = 0; }, 1000);
-            
-            if (clickCount === 3) {
-                clickCount = 0;
-                const simulateTime = prompt("【除錯模式】輸入你想模擬嘅婚禮時間 (例如 09:30, 22:45)\n取消可關閉除錯模式:", "11:15");
-                if (simulateTime && simulateTime.includes(':')) {
-                    const targetTimestamp = parseTaskTime(simulateTime);
-                    debugTimeOffset = targetTimestamp - new Date().getTime();
-                    isDebugMode = true;
-                    tick(); // Immediate update
-                    alert(`已將時間模擬至 ${simulateTime}`);
-                } else {
-                    debugTimeOffset = 0;
-                    isDebugMode = false;
-                    alert("除錯模式已關閉，恢復真實時間。");
-                }
-            }
-        });
-
-        // Bootstrap
-        window.addEventListener('DOMContentLoaded', () => {
-            initLocalCheckboxes();
-            tick(); // Initial call
-            setInterval(tick, 1000); // 1-second interval loop
-        });
-    </script>
-</body>
-</html>
+        <AddTaskModal 
+          isOpen={isModalOpen} 
+          onClose={() => setIsModalOpen(false)} 
+          onAdd={handleAddCustomTask}
+          currentDate={currentDate}
+        />
+      </div>
+    </div>
+  );
+}
