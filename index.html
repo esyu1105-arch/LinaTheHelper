@@ -1,395 +1,505 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { CheckCircle2, Circle, Coffee, Moon, Sun, ChevronLeft, ChevronRight, Plus, X, Sunrise, Sun as SunIcon, Moon as MoonIcon } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1e3a52" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Lina Tasks" />
+  <title>Lina Daily Tasks</title>
 
-// --- Firebase Initialization Pattern ---
-let app, auth, db, appId;
-try {
-  const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-  appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-} catch (e) {
-  console.error("Firebase init error:", e);
-}
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
 
-// --- Constants ---
-const HOLIDAYS_2026 = [
-  '2026-01-01', '2026-02-17', '2026-02-18', '2026-02-19', '2026-04-03', '2026-04-04', '2026-04-06', '2026-04-07', 
-  '2026-05-01', '2026-05-24', '2026-06-19', '2026-07-01', '2026-09-26', '2026-10-01', '2026-10-19', '2026-12-25', '2026-12-26'
-];
+  <!-- Apple touch icons -->
+  <link rel="apple-touch-icon" href="icon-192.png" />
 
-// --- Components ---
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-const TaskItem = ({ task, isCompleted, onToggle }) => {
-  const timeIcon = 
-    task.time === 1 ? <Sunrise className="w-4 h-4 text-orange-400 mr-2" /> :
-    task.time === 3 ? <MoonIcon className="w-4 h-4 text-indigo-400 mr-2" /> :
-    <SunIcon className="w-4 h-4 text-yellow-500 mr-2" />;
+  <!-- React + ReactDOM via CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-  return (
-    <div 
-      onClick={() => onToggle(task.id)}
-      className={`flex items-start p-4 mb-3 rounded-xl border transition-all cursor-pointer shadow-sm active:scale-[0.98]
-        ${isCompleted ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 hover:border-blue-300'}`}
-    >
-      <div className="mt-1 mr-4 flex-shrink-0">
-        {isCompleted ? <CheckCircle2 className="w-6 h-6 text-green-500" /> : <Circle className="w-6 h-6 text-gray-300" />}
-      </div>
-      <div className="flex-1">
-        <h3 className={`font-semibold text-lg flex items-center ${isCompleted ? 'text-green-800 line-through opacity-70' : 'text-gray-800'}`}>
-          {!isCompleted && timeIcon}
-          {task.en}
-        </h3>
-        <p className={`text-sm mt-1 ${isCompleted ? 'text-green-600 opacity-70' : 'text-gray-500'}`}>
-          {task.tag}
-        </p>
-      </div>
-    </div>
-  );
-};
+  <!-- Babel standalone (transpiles JSX in browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-const AddTaskModal = ({ isOpen, onClose, onAdd, currentDate }) => {
-  const [taskEn, setTaskEn] = useState('');
-  const [taskTag, setTaskTag] = useState('');
-  const [frequency, setFrequency] = useState('once');
-  const [time, setTime] = useState(2); // Default to Anytime
+  <!-- Firebase v10 via CDN (modular compat) -->
+  <script type="module">
+    import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+    import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, deleteDoc, serverTimestamp, query, where }
+      from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-  if (!isOpen) return null;
+    const firebaseConfig = {
+      apiKey:            "AIzaSyAclhZNXYnvFPqZPTxYfEv1YbJ0y2nx27M",
+      authDomain:        "linathehelper-2176c.firebaseapp.com",
+      projectId:         "linathehelper-2176c",
+      storageBucket:     "linathehelper-2176c.firebasestorage.app",
+      messagingSenderId: "741237679455",
+      appId:             "1:741237679455:web:1d7b8b5ca2fcbdbd8a02ea",
+      measurementId:     "G-VW4EGQ3G03"
+    };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!taskEn.trim()) return;
-    
-    onAdd({
-      en: taskEn,
-      tag: taskTag || 'No translation provided',
-      frequency,
-      time: parseInt(time),
-      targetDate: frequency === 'once' ? currentDate.toLocaleDateString('en-CA') : null,
-      dayOfWeek: frequency === 'weekly' ? currentDate.getDay() : null
-    });
-    
-    setTaskEn('');
-    setTaskTag('');
-    onClose();
-  };
+    const APP_ID = "lina-helper-app";
 
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-end sm:items-center">
-      <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl animate-in slide-in-from-bottom-10">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-800">Add Custom Task</h2>
-          <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20}/></button>
+    const app   = initializeApp(firebaseConfig);
+    const auth  = getAuth(app);
+    const db    = getFirestore(app);
+
+    // Expose to global scope for the Babel/JSX script below
+    window.__firebase = { auth, db, APP_ID, signInAnonymously, onAuthStateChanged,
+      doc, setDoc, getDoc, collection, onSnapshot, addDoc, deleteDoc, serverTimestamp, query, where };
+
+    // Kick off anonymous sign-in immediately
+    signInAnonymously(auth).catch(console.error);
+  </script>
+
+  <style>
+    /* Safe-area insets for iPhone notch / Dynamic Island */
+    .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+    body { overscroll-behavior: none; }
+    /* Hide scrollbar but keep scroll */
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body class="bg-slate-100">
+  <div id="root"></div>
+
+  <!-- Service Worker registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('SW registered:', reg.scope))
+          .catch(err => console.warn('SW failed:', err));
+      });
+    }
+  </script>
+
+  <!-- Main App (JSX — transpiled by Babel in browser) -->
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+    // Pull Firebase from global
+    const { auth, db, APP_ID,
+            onAuthStateChanged,
+            doc, setDoc, getDoc, collection, onSnapshot, addDoc, deleteDoc, serverTimestamp, query, where
+          } = window.__firebase;
+
+    // ── Constants ──────────────────────────────────────────────
+    const HOLIDAYS_2026 = new Set([
+      '2026-01-01','2026-02-17','2026-02-18','2026-02-19',
+      '2026-04-03','2026-04-04','2026-04-06','2026-04-07',
+      '2026-05-01','2026-05-24','2026-06-19','2026-07-01',
+      '2026-09-26','2026-10-01','2026-10-26','2026-12-25','2026-12-26'
+    ]);
+
+    const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    // ── Helpers ────────────────────────────────────────────────
+    const formatDateStr = (date) => date.toLocaleDateString('en-CA');
+
+    const getISOWeekNumber = (date) => {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    };
+
+    // ── Icons (inline SVG — avoids Lucide CDN dependency) ──────
+    const Icon = ({ d, cls = "w-5 h-5" }) => (
+      <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d={d} />
+      </svg>
+    );
+    const IcoCheck    = ({cls}) => <svg className={cls||"w-6 h-6"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
+    const IcoCircle   = ({cls}) => <svg className={cls||"w-6 h-6"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/></svg>;
+    const IcoChevL    = () => <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
+    const IcoChevR    = () => <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>;
+    const IcoPlus     = () => <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+    const IcoX        = () => <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+    const IcoTrash    = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>;
+    const IcoSun      = ({cls}) => <svg className={cls||"w-5 h-5"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
+    const IcoSunrise  = ({cls}) => <svg className={cls||"w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 18a5 5 0 0 0-10 0"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="4.22" y1="10.22" x2="5.64" y2="11.64"/><line x1="1" y1="18" x2="3" y2="18"/><line x1="21" y1="18" x2="23" y2="18"/><line x1="18.36" y1="11.64" x2="19.78" y2="10.22"/><line x1="23" y1="22" x2="1" y2="22"/><polyline points="8 6 12 2 16 6"/></svg>;
+    const IcoMoon     = ({cls}) => <svg className={cls||"w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+    const IcoCoffee   = ({cls}) => <svg className={cls||"w-10 h-10"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>;
+
+    // ── TaskItem ───────────────────────────────────────────────
+    function TaskItem({ task, isCompleted, onToggle }) {
+      const pendingRef = useRef(false);
+      const handleClick = useCallback(() => {
+        if (pendingRef.current) return;
+        pendingRef.current = true;
+        onToggle(task.id).finally(() => { pendingRef.current = false; });
+      }, [task.id, onToggle]);
+
+      return (
+        <div
+          onClick={handleClick}
+          className={`flex items-center p-4 rounded-2xl border-2 transition-all duration-150 cursor-pointer active:scale-[0.97] select-none
+            ${isCompleted ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-gray-100 hover:border-blue-200 shadow-sm'}`}
+        >
+          <div className="mr-3 flex-shrink-0">
+            {isCompleted
+              ? <IcoCheck cls="w-6 h-6 text-emerald-500" />
+              : <IcoCircle cls="w-6 h-6 text-gray-300" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`font-semibold text-base leading-tight ${isCompleted ? 'text-emerald-700 line-through opacity-60' : 'text-gray-800'}`}>
+              {task.en}
+            </p>
+            <p className={`text-sm mt-0.5 leading-snug ${isCompleted ? 'text-emerald-500 opacity-60' : 'text-gray-400'}`}>
+              {task.tag}
+            </p>
+          </div>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Task Name (English)</label>
-            <input type="text" required value={taskEn} onChange={e => setTaskEn(e.target.value)} className="w-full border rounded-lg p-2 bg-gray-50 focus:bg-white outline-blue-500" placeholder="e.g. Clean the aircon filter" />
+      );
+    }
+
+    // ── TimeSection ────────────────────────────────────────────
+    function TimeSection({ label, icon, tasks, completedTaskIds, onToggle }) {
+      if (!tasks.length) return null;
+      return (
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-3 px-1">
+            {icon}
+            <span className="text-xs font-bold uppercase tracking-widest text-gray-400">{label}</span>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Description (Tagalog / Note)</label>
-            <input type="text" value={taskTag} onChange={e => setTaskTag(e.target.value)} className="w-full border rounded-lg p-2 bg-gray-50 focus:bg-white outline-blue-500" placeholder="Optional notes" />
+          <div className="space-y-2">
+            {tasks.map(t => (
+              <TaskItem key={t.id} task={t} isCompleted={completedTaskIds.includes(t.id)} onToggle={onToggle} />
+            ))}
           </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">When to do?</label>
-              <select value={time} onChange={e => setTime(e.target.value)} className="w-full border rounded-lg p-2 bg-gray-50">
-                <option value={1}>Morning</option>
-                <option value={2}>Anytime</option>
-                <option value={3}>Night</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Frequency</label>
-              <select value={frequency} onChange={e => setFrequency(e.target.value)} className="w-full border rounded-lg p-2 bg-gray-50">
-                <option value="once">Today Only</option>
-                <option value="weekly">Every Week (on this day)</option>
-              </select>
-            </div>
-          </div>
-          
-          <button type="submit" className="w-full bg-[#4b86b4] text-white font-bold py-3 rounded-xl hover:bg-[#2a4d69] transition mt-2">
-            Save Task
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// --- Main App ---
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  
-  // Data from Firestore
-  const [completedTaskIds, setCompletedTaskIds] = useState([]);
-  const [dbCustomTasks, setDbCustomTasks] = useState([]);
-  
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // 1. Auth Setup (Crucial Rule 3)
-  useEffect(() => {
-    if (!auth) return;
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error("Auth failed:", err);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, []);
-
-  // 2. Fetch Data (Rules 1 & 2)
-  useEffect(() => {
-    if (!user || !db) return;
-    const dateStr = currentDate.toLocaleDateString('en-CA');
-    
-    // Listen to today's completed tasks document
-    const completedRef = doc(db, 'artifacts', appId, 'public', 'data', 'completed_tasks', dateStr);
-    const unsubCompleted = onSnapshot(completedRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setCompletedTaskIds(docSnap.data().taskIds || []);
-      } else {
-        setCompletedTaskIds([]);
-      }
-    }, (err) => console.error(err));
-
-    // Listen to ALL custom tasks (Filter in memory later)
-    const customTasksRef = collection(db, 'artifacts', appId, 'public', 'data', 'custom_tasks');
-    const unsubCustom = onSnapshot(customTasksRef, (snapshot) => {
-      const cTasks = [];
-      snapshot.forEach(doc => cTasks.push({ id: doc.id, ...doc.data() }));
-      setDbCustomTasks(cTasks);
-    }, (err) => console.error(err));
-
-    return () => {
-      unsubCompleted();
-      unsubCustom();
-    };
-  }, [user, currentDate]);
-
-  // Helper functions
-  const formatDateStr = (date) => date.toLocaleDateString('en-CA');
-  const shiftDate = (days) => {
-    const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() + days);
-    setCurrentDate(newDate);
-  };
-
-  const handleToggleTask = async (taskId) => {
-    if (!user || !db) return;
-    const dateStr = formatDateStr(currentDate);
-    const newIds = completedTaskIds.includes(taskId)
-      ? completedTaskIds.filter(id => id !== taskId)
-      : [...completedTaskIds, taskId];
-    
-    // Optimistic UI update could be done here, but Firestore is fast enough.
-    const completedRef = doc(db, 'artifacts', appId, 'public', 'data', 'completed_tasks', dateStr);
-    await setDoc(completedRef, { taskIds: newIds }, { merge: true });
-  };
-
-  const handleAddCustomTask = async (taskData) => {
-    if (!user || !db) return;
-    const customTasksRef = collection(db, 'artifacts', appId, 'public', 'data', 'custom_tasks');
-    await addDoc(customTasksRef, {
-      ...taskData,
-      createdAt: serverTimestamp(),
-      createdBy: user.uid
-    });
-  };
-
-  // Task generation & Merging Logic
-  const { tasks, status, statusSubtitle } = useMemo(() => {
-    const day = currentDate.getDay();
-    const dateStr = formatDateStr(currentDate);
-    
-    if (day === 0) return { tasks: [], status: 'sunday', statusSubtitle: 'Today is Sunday. Have a good rest!' };
-    if (HOLIDAYS_2026.includes(dateStr)) return { tasks: [], status: 'holiday', statusSubtitle: 'Today is a Public Holiday. Enjoy your day off!' };
-
-    // --- Core Tasks (Hardcoded rules) ---
-    // time: 1=Morning, 2=Anytime, 3=Night
-    let dailyTasks = [];
-
-    // Morning
-    dailyTasks.push({ id: 't1', en: 'Floor Dusting & Vacuuming', tag: 'Mag-vacuum o mag-alis ng alikabok sa sahig bago mag-map.', time: 1 });
-    if ([1, 3, 5].includes(day)) {
-      dailyTasks.push({ id: 't2', en: 'Mopping the Floor', tag: 'Mag-mop ng sahig (pagkatapos mag-vacuum).', time: 1 });
-    }
-    if ([2, 4, 6].includes(day)) {
-      dailyTasks.push({ id: 't6', en: 'Do the Laundry', tag: 'Maglaba sa umaga (ihiwalay ang puti sa may kulay).', time: 1 });
+        </div>
+      );
     }
 
-    // Night (Renamed for clarity)
-    dailyTasks.push({ id: 't3', en: 'Clean Kitchen Stove & Sink', tag: 'Punasan ang kalan, cooker hood, at linisin ang filter ng lababo.', time: 3 });
-    dailyTasks.push({ id: 't4', en: 'Clear Bathroom Drain Hair', tag: 'Alisin ang buhok sa drainage ng banyo gabi-gabi.', time: 3 });
-    dailyTasks.push({ id: 't5', en: 'Check and Take out Trash', tag: 'Suriin ang basurahan at itapon ang basura bago matulog.', time: 3 });
+    // ── AddTaskModal ───────────────────────────────────────────
+    function AddTaskModal({ isOpen, onClose, onAdd, currentDate }) {
+      const [taskEn,    setTaskEn]    = useState('');
+      const [taskTag,   setTaskTag]   = useState('');
+      const [frequency, setFrequency] = useState('once');
+      const [time,      setTime]      = useState(2);
+      const [saving,    setSaving]    = useState(false);
 
-    // Anytime Tasks
-    if (day === 5) {
-      dailyTasks.push({ id: 't7', en: 'Drain Disinfection', tag: 'Magbuhos ng Dettol sa mga drainage sa kusina at banyo.', time: 2 });
-    }
+      useEffect(() => {
+        if (!isOpen) { setTaskEn(''); setTaskTag(''); setFrequency('once'); setTime(2); }
+      }, [isOpen]);
 
-    // Bi-weekly cycle logic
-    if (day === 6) {
-      const firstDayOfYear = new Date(currentDate.getFullYear(), 0, 1);
-      const pastDaysOfYear = (currentDate - firstDayOfYear) / 86400000;
-      const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
-      
-      if (weekNum % 2 !== 0) {
-        dailyTasks.push({ id: 't8', en: 'Change Bed Sheets & Pillow Covers', tag: 'Palitan at labhan ang lahat ng bed sheet at punda.', time: 2 });
-        dailyTasks.push({ id: 't9', en: 'Wipe Indoor Windows', tag: 'Punasan ang mga salamin ng bintana sa loob.', time: 2 });
-      } else {
-        dailyTasks.push({ id: 't10', en: 'Cooker Hood Deep Cleaning', tag: 'Linisin nang mabuti ang oil cups at filters ng cooker hood.', time: 2 });
-      }
-    }
+      if (!isOpen) return null;
 
-    // Deep Cleaning Rotation
-    const rotationMap = {
-      1: { en: 'Deep Clean: Living Room', tag: 'Punasan ang TV cabinet, sofa, alikabok sa matataas na lugar' },
-      2: { en: 'Deep Clean: Kitchen', tag: 'Loob ng microwave/ref, tiles sa dingding' },
-      3: { en: 'Deep Clean: Toilet & Bathroom', tag: 'Kuskusin ang toilet bowl, salamin, shower glass' },
-      4: { en: 'Deep Clean: Master Bedroom', tag: 'Punasan ang aparador at gilid ng kama' },
-      5: { en: 'Deep Clean: Helper Bedroom', tag: 'Ayusin ang sariling kwarto' },
-    };
-    if (rotationMap[day]) {
-      dailyTasks.push({ id: `t11_${day}`, ...rotationMap[day], time: 2 });
-    }
+      const handleSave = async () => {
+        if (!taskEn.trim() || saving) return;
+        setSaving(true);
+        await onAdd({
+          en: taskEn.trim(),
+          tag: taskTag.trim() || 'No translation provided',
+          frequency,
+          time: parseInt(time),
+          targetDate: frequency === 'once'   ? formatDateStr(currentDate) : null,
+          dayOfWeek:  frequency === 'weekly' ? currentDate.getDay()       : null,
+        });
+        setSaving(false);
+        onClose();
+      };
 
-    // --- Merge Custom Tasks ---
-    const activeCustomTasks = dbCustomTasks.filter(ct => {
-      if (ct.frequency === 'once') return ct.targetDate === dateStr;
-      if (ct.frequency === 'weekly') return ct.dayOfWeek === day;
-      return false;
-    });
-
-    const allTasks = [...dailyTasks, ...activeCustomTasks];
-
-    // --- Sort by Time (1=Morning, 2=Anytime, 3=Night) ---
-    allTasks.sort((a, b) => a.time - b.time);
-
-    return { tasks: allTasks, status: 'working', statusSubtitle: '' };
-  }, [currentDate, dbCustomTasks]);
-
-  const progress = tasks.length === 0 ? 0 : Math.round((completedTaskIds.length / tasks.length) * 100);
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex justify-center font-sans selection:bg-blue-200">
-      <div className="w-full max-w-md bg-white shadow-xl min-h-screen flex flex-col relative overflow-hidden">
-        
-        {/* Header */}
-        <header className="bg-[#2a4d69] text-white pt-6 pb-6 px-6 rounded-b-3xl shadow-md z-10 relative">
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-xl font-bold tracking-wide flex items-center gap-2">
-              <Sun className="w-6 h-6 text-yellow-300" />
-              Daily Tasks
-            </h1>
-            
-            {/* Nav Controls */}
-            <div className="flex bg-[#4b86b4] rounded-full p-1 shadow-inner">
-              <button onClick={() => shiftDate(-1)} className="p-1 rounded-full hover:bg-[#2a4d69] transition">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button onClick={() => setCurrentDate(new Date())} className="p-1 px-3 text-sm font-semibold hover:bg-[#2a4d69] transition">
-                Today
-              </button>
-              <button onClick={() => shiftDate(1)} className="p-1 rounded-full hover:bg-[#2a4d69] transition">
-                <ChevronRight className="w-5 h-5" />
+      return (
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex justify-center items-end sm:items-center"
+          onClick={e => e.target === e.currentTarget && onClose()}
+        >
+          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl">
+            <div className="flex justify-between items-center mb-5">
+              <h2 className="text-xl font-bold text-gray-800">Add Task</h2>
+              <button onClick={onClose} className="w-11 h-11 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 active:scale-95 transition">
+                <IcoX />
               </button>
             </div>
-          </div>
-          
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-[#adcbe3] text-sm uppercase font-semibold tracking-wider">
-                {currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
-              </p>
-              <p className="text-3xl font-light">
-                {currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </p>
-            </div>
-            {status === 'working' && (
-              <button 
-                onClick={() => setIsModalOpen(true)}
-                className="bg-white/20 hover:bg-white/30 p-2 rounded-xl backdrop-blur-sm transition flex items-center gap-1 text-sm font-semibold"
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">Task Name (English)</label>
+                <input
+                  type="text" value={taskEn} onChange={e => setTaskEn(e.target.value)} autoFocus
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-base bg-gray-50 focus:bg-white focus:border-blue-400 outline-none transition"
+                  placeholder="e.g. Clean the aircon filter"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-600 mb-1.5">Tagalog / Notes (optional)</label>
+                <input
+                  type="text" value={taskTag} onChange={e => setTaskTag(e.target.value)}
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-base bg-gray-50 focus:bg-white focus:border-blue-400 outline-none transition"
+                  placeholder="e.g. Linisin ang aircon filter"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-600 mb-1.5">Time of Day</label>
+                  <select value={time} onChange={e => setTime(e.target.value)} className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-base bg-gray-50 focus:border-blue-400 outline-none">
+                    <option value={1}>🌅 Morning</option>
+                    <option value={2}>☀️ Anytime</option>
+                    <option value={3}>🌙 Night</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-600 mb-1.5">Repeat</label>
+                  <select value={frequency} onChange={e => setFrequency(e.target.value)} className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-base bg-gray-50 focus:border-blue-400 outline-none">
+                    <option value="once">Today Only</option>
+                    <option value="weekly">Every Week</option>
+                  </select>
+                </div>
+              </div>
+              <button
+                onClick={handleSave}
+                disabled={!taskEn.trim() || saving}
+                className="w-full min-h-[48px] bg-[#1e3a52] text-white font-bold text-base rounded-2xl hover:bg-[#16293b] active:scale-[0.98] transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <Plus size={18} /> Add
+                {saving ? 'Saving…' : 'Save Task'}
               </button>
-            )}
-          </div>
-        </header>
-
-        {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto px-6 py-6 pb-24">
-          {!user ? (
-            <div className="flex justify-center items-center h-40">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2a4d69]"></div>
             </div>
-          ) : status !== 'working' ? (
-             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6">
-               <div className="w-24 h-24 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-6">
-                 {status === 'holiday' || status === 'sunday' ? <Coffee size={48} /> : <Moon size={48} />}
-               </div>
-               <h2 className="text-2xl font-bold text-gray-800 mb-2">{status === 'holiday' ? 'Public Holiday' : 'Rest Day'}</h2>
-               <p className="text-gray-500">{statusSubtitle}</p>
-             </div>
-          ) : (
-            <>
-              {/* Progress */}
-              <div className="mb-6">
-                <div className="flex justify-between text-sm font-semibold text-gray-600 mb-2">
-                  <span>Task Progress</span>
-                  <span className="text-blue-600">{progress}%</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Main App ───────────────────────────────────────────────
+    function App() {
+      const [user,             setUser]             = useState(null);
+      const [currentDate,      setCurrentDate]      = useState(new Date());
+      const [completedTaskIds, setCompletedTaskIds] = useState([]);
+      const [dbCustomTasks,    setDbCustomTasks]    = useState([]);
+      const [isModalOpen,      setIsModalOpen]      = useState(false);
+
+      // Auth listener
+      useEffect(() => onAuthStateChanged(auth, setUser), []);
+
+      // Firestore listeners
+      useEffect(() => {
+        if (!user) return;
+        const dateStr = formatDateStr(currentDate);
+        const day     = currentDate.getDay();
+
+        const completedRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'completed_tasks', dateStr);
+        const unsubCompleted = onSnapshot(completedRef, snap => {
+          setCompletedTaskIds(snap.exists() ? (snap.data().taskIds || []) : []);
+        }, console.error);
+
+        const customRef  = collection(db, 'artifacts', APP_ID, 'public', 'data', 'custom_tasks');
+        const qOnce      = query(customRef, where('frequency', '==', 'once'),   where('targetDate', '==', dateStr));
+        const qWeekly    = query(customRef, where('frequency', '==', 'weekly'), where('dayOfWeek',  '==', day));
+        const onceMap    = new Map();
+        const weeklyMap  = new Map();
+        const mergeCustom = () => setDbCustomTasks([...onceMap.values(), ...weeklyMap.values()]);
+
+        const unsubOnce   = onSnapshot(qOnce,   snap => { onceMap.clear();   snap.forEach(d => onceMap.set(d.id,   { id: d.id, ...d.data() })); mergeCustom(); }, console.error);
+        const unsubWeekly = onSnapshot(qWeekly, snap => { weeklyMap.clear(); snap.forEach(d => weeklyMap.set(d.id, { id: d.id, ...d.data() })); mergeCustom(); }, console.error);
+
+        return () => { unsubCompleted(); unsubOnce(); unsubWeekly(); };
+      }, [user, currentDate]);
+
+      const shiftDate = useCallback((days) => {
+        setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + days); return d; });
+      }, []);
+
+      const handleToggleTask = useCallback(async (taskId) => {
+        if (!user) return;
+        const dateStr      = formatDateStr(currentDate);
+        const completedRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'completed_tasks', dateStr);
+        const snap         = await getDoc(completedRef);
+        const currentIds   = snap.exists() ? (snap.data().taskIds || []) : [];
+        const newIds       = currentIds.includes(taskId)
+          ? currentIds.filter(id => id !== taskId)
+          : [...currentIds, taskId];
+        await setDoc(completedRef, { taskIds: newIds }, { merge: true });
+      }, [user, currentDate]);
+
+      const handleAddCustomTask = useCallback(async (taskData) => {
+        if (!user) return;
+        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'custom_tasks'), {
+          ...taskData, createdAt: serverTimestamp(), createdBy: user.uid
+        });
+      }, [user]);
+
+      const handleDeleteCustomTask = useCallback(async (taskId) => {
+        if (!user) return;
+        await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'custom_tasks', taskId));
+      }, [user]);
+
+      // Task generation
+      const { tasks, status, statusSubtitle } = useMemo(() => {
+        const day     = currentDate.getDay();
+        const dateStr = formatDateStr(currentDate);
+
+        if (day === 0) return { tasks: [], status: 'sunday',  statusSubtitle: 'Today is Sunday. Have a good rest!' };
+        if (HOLIDAYS_2026.has(dateStr)) return { tasks: [], status: 'holiday', statusSubtitle: 'Today is a Public Holiday. Enjoy your day off!' };
+
+        const dt = [];
+        // Morning
+        dt.push({ id: 't1', en: 'Floor Dusting & Vacuuming', tag: 'Mag-vacuum o mag-alis ng alikabok sa sahig bago mag-mop.', time: 1 });
+        if ([1,3,5].includes(day)) dt.push({ id: 't2', en: 'Mopping the Floor',  tag: 'Mag-mop ng sahig (pagkatapos mag-vacuum).', time: 1 });
+        if ([2,4,6].includes(day)) dt.push({ id: 't6', en: 'Do the Laundry',     tag: 'Maglaba sa umaga (ihiwalay ang puti sa may kulay).', time: 1 });
+        // Night
+        dt.push({ id: 't3', en: 'Clean Kitchen Stove & Sink', tag: 'Punasan ang kalan, cooker hood, at linisin ang filter ng lababo.', time: 3 });
+        dt.push({ id: 't4', en: 'Clear Bathroom Drain Hair',  tag: 'Alisin ang buhok sa drainage ng banyo gabi-gabi.', time: 3 });
+        dt.push({ id: 't5', en: 'Check and Take out Trash',   tag: 'Suriin ang basurahan at itapon ang basura bago matulog.', time: 3 });
+        // Anytime
+        if (day === 5) dt.push({ id: 't7', en: 'Drain Disinfection', tag: 'Magbuhos ng Dettol sa mga drainage sa kusina at banyo.', time: 2 });
+        // Bi-weekly Saturday
+        if (day === 6) {
+          const wk = getISOWeekNumber(currentDate);
+          if (wk % 2 !== 0) {
+            dt.push({ id: 't8', en: 'Change Bed Sheets & Pillow Covers', tag: 'Palitan at labhan ang lahat ng bed sheet at punda.', time: 2 });
+            dt.push({ id: 't9', en: 'Wipe Indoor Windows',               tag: 'Punasan ang mga salamin ng bintana sa loob.', time: 2 });
+          } else {
+            dt.push({ id: 't10', en: 'Cooker Hood Deep Cleaning', tag: 'Linisin nang mabuti ang oil cups at filters ng cooker hood.', time: 2 });
+          }
+        }
+        // Deep clean rotation
+        const rotation = {
+          1: { en: 'Deep Clean: Living Room',       tag: 'Punasan ang TV cabinet, sofa, alikabok sa matataas na lugar' },
+          2: { en: 'Deep Clean: Kitchen',           tag: 'Loob ng microwave/ref, tiles sa dingding' },
+          3: { en: 'Deep Clean: Toilet & Bathroom', tag: 'Kuskusin ang toilet bowl, salamin, shower glass' },
+          4: { en: 'Deep Clean: Master Bedroom',    tag: 'Punasan ang aparador at gilid ng kama' },
+          5: { en: 'Deep Clean: Helper Bedroom',    tag: 'Ayusin ang sariling kwarto' },
+        };
+        if (rotation[day]) dt.push({ id: `t11_${day}`, ...rotation[day], time: 2 });
+
+        const all = [...dt, ...dbCustomTasks];
+        all.sort((a, b) => a.time - b.time);
+        return { tasks: all, status: 'working', statusSubtitle: '' };
+      }, [currentDate, dbCustomTasks]);
+
+      const taskIdSet      = useMemo(() => new Set(tasks.map(t => t.id)), [tasks]);
+      const completedCount = useMemo(() => completedTaskIds.filter(id => taskIdSet.has(id)).length, [completedTaskIds, taskIdSet]);
+      const progress       = tasks.length === 0 ? 0 : Math.round((completedCount / tasks.length) * 100);
+
+      const morningTasks  = tasks.filter(t => t.time === 1);
+      const anytimeTasks  = tasks.filter(t => t.time === 2);
+      const nightTasks    = tasks.filter(t => t.time === 3);
+      const isToday       = formatDateStr(currentDate) === formatDateStr(new Date());
+
+      return (
+        <div className="min-h-screen bg-slate-100 flex justify-center font-sans">
+          <div className="w-full max-w-md bg-white shadow-2xl min-h-screen flex flex-col">
+
+            {/* ── Header ── */}
+            <header className="bg-[#1e3a52] text-white pt-6 pb-7 px-5 shadow-lg" style={{paddingTop: `calc(1.5rem + env(safe-area-inset-top, 0px))`}}>
+              {/* Top row */}
+              <div className="flex justify-between items-center mb-5">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-amber-400 rounded-lg flex items-center justify-center shadow">
+                    <IcoSun cls="w-5 h-5 text-white" />
+                  </div>
+                  <span className="text-base font-bold tracking-wide text-white/90">Daily Tasks</span>
                 </div>
-                <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${progress}%` }}
-                  />
+                <div className="flex items-center bg-white/10 rounded-2xl p-1 gap-0.5">
+                  <button onClick={() => shiftDate(-1)} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/20 active:bg-white/30 transition"><IcoChevL /></button>
+                  <button
+                    onClick={() => setCurrentDate(new Date())}
+                    className={`px-3 h-11 text-sm font-bold rounded-xl transition ${isToday ? 'bg-amber-400 text-white shadow' : 'hover:bg-white/20 text-white/80'}`}
+                  >Today</button>
+                  <button onClick={() => shiftDate(1)} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/20 active:bg-white/30 transition"><IcoChevR /></button>
                 </div>
               </div>
 
-              {/* Task List */}
-              <div className="space-y-1">
-                {tasks.map(task => (
-                  <TaskItem 
-                    key={task.id} 
-                    task={task} 
-                    isCompleted={completedTaskIds.includes(task.id)} 
-                    onToggle={handleToggleTask} 
-                  />
-                ))}
+              {/* Date row */}
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-blue-300 mb-1">
+                    {currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
+                  </p>
+                  <p className="text-2xl font-light">
+                    {currentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+                {status === 'working' && (
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="h-11 px-4 bg-amber-400 hover:bg-amber-300 active:scale-95 text-white font-bold rounded-2xl flex items-center gap-1.5 text-sm shadow transition"
+                  >
+                    <IcoPlus /> Add
+                  </button>
+                )}
               </div>
-              
-              {progress === 100 && tasks.length > 0 && (
-                <div className="mt-6 p-4 bg-green-100 text-green-800 rounded-xl text-center font-semibold border border-green-200">
-                  🎉 All tasks completed! Great job today!
+
+              {/* Progress bar */}
+              {status === 'working' && user && (
+                <div className="mt-5">
+                  <div className="flex justify-between text-xs font-semibold text-blue-200 mb-1.5">
+                    <span>{completedCount} of {tasks.length} done</span>
+                    <span className={progress === 100 ? 'text-emerald-300' : ''}>{progress}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-white/15 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ease-out ${progress === 100 ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
                 </div>
               )}
-            </>
-          )}
-        </main>
+            </header>
 
-        <AddTaskModal 
-          isOpen={isModalOpen} 
-          onClose={() => setIsModalOpen(false)} 
-          onAdd={handleAddCustomTask}
-          currentDate={currentDate}
-        />
-      </div>
-    </div>
-  );
-}
+            {/* ── Main Content ── */}
+            <main className="flex-1 overflow-y-auto px-5 py-5 pb-10">
+              {!user ? (
+                <div className="flex flex-col items-center justify-center h-48 gap-3">
+                  <div className="w-10 h-10 border-4 border-[#1e3a52] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-gray-400 font-medium">Connecting…</p>
+                </div>
+              ) : status !== 'working' ? (
+                <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
+                  <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mb-5">
+                    <IcoCoffee cls="w-10 h-10 text-blue-400" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                    {status === 'holiday' ? 'Public Holiday 🎉' : 'Rest Day 😴'}
+                  </h2>
+                  <p className="text-gray-400 text-sm">{statusSubtitle}</p>
+                </div>
+              ) : (
+                <>
+                  {progress === 100 && tasks.length > 0 && (
+                    <div className="mb-5 p-4 bg-emerald-50 border-2 border-emerald-200 text-emerald-800 rounded-2xl text-center font-bold text-sm">
+                      🎉 All done for today! Great work!
+                    </div>
+                  )}
+                  <TimeSection label="Morning" icon={<IcoSunrise cls="w-4 h-4 text-orange-400"/>} tasks={morningTasks} completedTaskIds={completedTaskIds} onToggle={handleToggleTask} />
+                  <TimeSection label="Anytime" icon={<IcoSun     cls="w-4 h-4 text-yellow-500"/>} tasks={anytimeTasks} completedTaskIds={completedTaskIds} onToggle={handleToggleTask} />
+                  <TimeSection label="Night"   icon={<IcoMoon    cls="w-4 h-4 text-indigo-400"/>} tasks={nightTasks}   completedTaskIds={completedTaskIds} onToggle={handleToggleTask} />
+
+                  {dbCustomTasks.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <p className="text-xs font-bold uppercase tracking-widest text-gray-300 mb-3 px-1">Custom Tasks</p>
+                      {dbCustomTasks.map(ct => (
+                        <div key={ct.id} className="flex items-center gap-2 mb-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-blue-800 truncate">{ct.en}</p>
+                            <p className="text-xs text-blue-400">{ct.frequency === 'once' ? 'Today only' : `Every ${DAYS[ct.dayOfWeek]}`}</p>
+                          </div>
+                          <button onClick={() => handleDeleteCustomTask(ct.id)} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-red-100 active:scale-90 transition text-gray-300 hover:text-red-400">
+                            <IcoTrash />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </main>
+
+            <AddTaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={handleAddCustomTask} currentDate={currentDate} />
+          </div>
+        </div>
+      );
+    }
+
+    // Mount
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
