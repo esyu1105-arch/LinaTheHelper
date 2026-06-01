@@ -1,12 +1,13 @@
 // sw.js — Service Worker for Lina Daily Tasks PWA
-// v2: removed message channel issues by not calling skipWaiting/claim aggressively
-const CACHE_NAME = 'lina-tasks-v2';
+// v3: use relative paths for GitHub Pages subdirectory compatibility
+const CACHE_NAME = 'lina-tasks-v3';
 
 const PRECACHE_URLS = [
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 // ── Install ───────────────────────────────────────────────────
@@ -15,6 +16,10 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(PRECACHE_URLS))
       .then(() => self.skipWaiting())
+      .catch(err => {
+        console.warn('SW precache failed (non-fatal):', err);
+        return self.skipWaiting();
+      })
   );
 });
 
@@ -33,7 +38,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Never intercept Firebase / Google API calls
+  // Never intercept Firebase / CDN calls
   if (
     url.hostname.includes('googleapis.com') ||
     url.hostname.includes('firebase') ||
@@ -42,7 +47,6 @@ self.addEventListener('fetch', event => {
     url.hostname.includes('tailwindcss.com') ||
     url.hostname.includes('babeljs.io')
   ) {
-    // Let CDN + Firebase go straight to network — no respondWith = no message channel issue
     return;
   }
 
@@ -55,7 +59,7 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
           return response;
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match('./index.html'))
     );
     return;
   }
