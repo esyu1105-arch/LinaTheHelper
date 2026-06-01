@@ -30,7 +30,7 @@
   <script type="module">
     import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
     import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-    import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, deleteDoc, serverTimestamp, query, where }
+    import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, getDocs, addDoc, deleteDoc, serverTimestamp, query, where }
       from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
     const firebaseConfig = {
@@ -51,7 +51,7 @@
 
     // Expose to global scope for the Babel/JSX script below
     window.__firebase = { auth, db, APP_ID, signInAnonymously, onAuthStateChanged,
-      doc, setDoc, getDoc, collection, onSnapshot, addDoc, deleteDoc, serverTimestamp, query, where };
+      doc, setDoc, getDoc, collection, onSnapshot, getDocs, addDoc, deleteDoc, serverTimestamp, query, where };
 
     // Kick off anonymous sign-in immediately
     signInAnonymously(auth).catch(console.error);
