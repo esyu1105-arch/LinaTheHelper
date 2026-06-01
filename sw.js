@@ -1,45 +1,52 @@
 // sw.js — Service Worker for Lina Daily Tasks PWA
-const CACHE_NAME = 'lina-tasks-v1';
+// v2: removed message channel issues by not calling skipWaiting/claim aggressively
+const CACHE_NAME = 'lina-tasks-v2';
 
-// Core assets to cache on install (CDN scripts are cached on first fetch)
 const PRECACHE_URLS = [
-  '/',
   '/index.html',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png'
 ];
 
-// ── Install: pre-cache shell assets ──────────────────────────
+// ── Install ───────────────────────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_URLS))
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(PRECACHE_URLS))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// ── Activate: remove old caches ───────────────────────────────
+// ── Activate: clean old caches ────────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// ── Fetch: cache-first for static assets, network-first for Firebase ─
+// ── Fetch ─────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Let Firebase / Firestore calls go straight to network — never cache them
-  if (url.hostname.includes('firestore.googleapis.com') ||
-      url.hostname.includes('firebase') ||
-      url.hostname.includes('googleapis.com')) {
-    return; // Default browser fetch
+  // Never intercept Firebase / Google API calls
+  if (
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('firebase') ||
+    url.hostname.includes('gstatic.com') ||
+    url.hostname.includes('unpkg.com') ||
+    url.hostname.includes('tailwindcss.com') ||
+    url.hostname.includes('babeljs.io')
+  ) {
+    // Let CDN + Firebase go straight to network — no respondWith = no message channel issue
+    return;
   }
 
-  // Network-first for navigation (always get freshest HTML)
+  // Navigation: network-first, fallback to cached index.html
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
@@ -53,12 +60,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for CDN assets (React, Tailwind, Babel, Firebase SDK)
+  // Everything else: cache-first
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
-        if (response.ok) {
+        if (response && response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }
